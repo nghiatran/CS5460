@@ -36,7 +36,7 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f )
     int size;
     printf("Hello, I am a master\n");
 
-    MPI_Comm_size(global_comm, &size );    
+    MPI_Comm_size(global_comm, &size );  
     mw_work_t ** works = f->create(argc, argv);
 
 
