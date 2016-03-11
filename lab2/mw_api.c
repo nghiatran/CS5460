@@ -2,57 +2,106 @@
 #include "mpi.h"
 #include "mw_api.h"
 
+/* run master-worker */
+void MW_Run (int argc, char **argv, struct mw_api_spec *f){
 
-struct userdef_work_t{
-  int w;
-  int q;
-};
+  int rank, size;
+  MPI_Comm mw_comm;
 
-struct userdef_result_t{
-  int sum;
-};
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  //MPI_Comm_split( MPI_COMM_WORLD, rank == 0, 0, &mw_comm );
+  if (rank == 0) 
+    master( MPI_COMM_WORLD, argc, argv, f);
+  else
+    slave( MPI_COMM_WORLD, f);
+}
 
-mw_work_t ** create_work (int argc, char **argv){
-  static mw_work_t w1 = {25,5};  
-  static mw_work_t w2 = {30,40};
-  mw_work_t ** works = malloc(sizeof(mw_work_t *)*11);
-  for(int i=0;i<10;i++)
-    *(works +i) = i % 2 == 0 ? &w1 : &w2;
-  *(works+10) =NULL;
+
+char * serialize_works(int nWorks, mw_work_t ** works, int work_sz){
+  char * b = malloc(work_sz*nWorks);
+  for(int i =0;i<nWorks;i++){
+    memcpy(b +i*work_sz, *(works+i), work_sz);
+  }
+  return b;
+}
+
+mw_work_t * deserialize_work(char * buff, int work_sz){
+  mw_work_t * works = malloc(work_sz);
+  memcpy(works, buff, work_sz);
   return works;
 }
 
-int * process_results (int sz, mw_result_t *res){
-  int sum=0;
-  for(int i=0;i<sz;i++){
-    sum += res->sum;
-    res++;
-  }
-  printf("Sum is: %d\n",sum);
-  return 1;
+int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f )
+{ 
+    int size;
+    printf("Hello, I am a master\n");
+
+    MPI_Comm_size(global_comm, &size );    
+    mw_work_t ** works = f->create(argc, argv);
+
+
+    int totalWorks=0;
+    while(*(works+totalWorks) != NULL)
+      totalWorks++;
+
+    // send works to workers
+    int a = totalWorks/(size-1);
+    for(int worker_rank =1;worker_rank<size;worker_rank++){
+      int count = worker_rank == size-1 ? totalWorks - (size-2)*a : a;
+      char * b = serialize_works(count, works + (worker_rank-1)*a, f->work_sz);
+
+      MPI_Send(&count,1,MPI_INT,worker_rank,0,global_comm);
+      MPI_Send(b, count*f->work_sz, MPI_BYTE,worker_rank,0,global_comm);
+      free(b);
+    }
+
+    //// collect results
+    mw_result_t * mw_results = malloc(f->res_sz*totalWorks);
+    char result_buf[f->res_sz];
+    MPI_Status status;
+
+    int n=0;
+    for(int worker_rank=1;worker_rank<size;worker_rank++){
+      int count = worker_rank == size-1 ? totalWorks - (size-2)*a : a;
+      for(int i =0;i<count;i++){
+        MPI_Recv(result_buf,f->res_sz,MPI_BYTE,worker_rank,0,global_comm,&status);
+        memcpy(((char *)mw_results) + n*f->res_sz, result_buf,f->res_sz);
+        n++;
+      }
+    }
+    
+    f->result(totalWorks,mw_results);
+
+    free(works);
+    free(mw_results);
 }
 
-mw_result_t *do_work (mw_work_t *work){
-  printf("work is: %d and %d\n", work->w, work->q);
-  mw_result_t * result = malloc(sizeof(mw_result_t));
-  result->sum = work->w + work->q;
-  return  result;
-}   
 
-int main(int argc, char **argv )
+int slave(MPI_Comm global_comm, struct mw_api_spec *f )
 {
+    int  rank;
+    MPI_Status status;
+    int nWorks;
 
-  struct mw_api_spec f;
-
-  MPI_Init (&argc, &argv);
-
-  f.create = create_work;
-  f.result = process_results;
-  f.compute = do_work;
-  f.work_sz = sizeof (struct userdef_work_t);
-  f.res_sz = sizeof (struct userdef_result_t);
-  MW_Run (argc, argv, &f);
-  MPI_Finalize ();
-
-  return 0;
+    MPI_Comm_rank(global_comm, &rank);
+    MPI_Recv(&nWorks,1,MPI_INT,0,0,global_comm,&status);
+    char buf[nWorks * f->work_sz];
+    MPI_Recv(buf,nWorks*(f->work_sz),MPI_BYTE,0,0,global_comm, &status);
+    
+    //// execute works
+    mw_result_t ** results = malloc(sizeof(mw_result_t *) * nWorks);
+    for(int i = 0;i<nWorks;i++){
+      printf("doing work in process %d:\n",rank);
+      mw_work_t * work = deserialize_work(buf+i*(f->work_sz),f->work_sz);
+      *(results +i) = f->compute(work);
+      free(work);
+    }
+    
+    //// send results to the master
+    char result_buf[f->res_sz];    
+    for(int i =0;i<nWorks;i++){
+      memcpy(result_buf, *(results+i),f->res_sz);
+      MPI_Send(result_buf,f->res_sz,MPI_BYTE,0,0,global_comm);
+    }
+    return 0;
 }
