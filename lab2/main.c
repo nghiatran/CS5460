@@ -32,7 +32,6 @@ int * process_results (int sz, mw_result_t *res){
 }
 
 mw_result_t *do_work (mw_work_t *work){
-  printf("work is: %d and %d\n", work->w, work->q);
   mw_result_t * result = malloc(sizeof(mw_result_t));
   result->sum = work->w + work->q;
   return  result;

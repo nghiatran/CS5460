@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "mw_api.h"
 #include "math.h"
+#include <gmp.h>
 
 struct userdef_work_t{
 	int val;
@@ -33,7 +34,7 @@ mw_result_t *do_work(mw_work_t *work){
 
 
 mw_work_t **create_work(int argc,char **argv){
- 	double num = 100; //random. Need to use big numbers
+ 	double num = 150; //random. Need to use big numbers
  	
   int sqrtn = (int)sqrt(num);
  	int divisions_per_work = 4;//random

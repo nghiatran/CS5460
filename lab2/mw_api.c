@@ -2,6 +2,7 @@
 #include "mpi.h"
 #include "mw_api.h"
 
+#define MAX_MESSAGE_SIZE_IN_BYTE 500000
 /* run master-worker */
 void MW_Run (int argc, char **argv, struct mw_api_spec *f){
 
@@ -31,6 +32,27 @@ mw_work_t * deserialize_work(char * buff, int work_sz){
   return works;
 }
 
+int send_message(char * buf, int size,int dest, int tag, MPI_Comm comm){
+  int n = size / MAX_MESSAGE_SIZE_IN_BYTE;
+  for(int i =0;i<n;i++){
+    MPI_Send(buf+(MAX_MESSAGE_SIZE_IN_BYTE*i), MAX_MESSAGE_SIZE_IN_BYTE,MPI_BYTE,dest,tag,comm);
+  }
+
+  if(MAX_MESSAGE_SIZE_IN_BYTE*n != size)
+    MPI_Send(buf+MAX_MESSAGE_SIZE_IN_BYTE*n, size -MAX_MESSAGE_SIZE_IN_BYTE*n,MPI_BYTE,dest,tag,comm);
+}
+
+int receive_message(char * buf, int size, int source, int tag, MPI_Comm comm){
+  MPI_Status status;
+  int n = size / MAX_MESSAGE_SIZE_IN_BYTE;
+  for(int i =0;i<n;i++){
+    MPI_Recv(buf+(MAX_MESSAGE_SIZE_IN_BYTE*i), MAX_MESSAGE_SIZE_IN_BYTE,MPI_BYTE,source,tag,comm,&status);
+  }
+
+  if(MAX_MESSAGE_SIZE_IN_BYTE*n != size)
+    MPI_Recv(buf+MAX_MESSAGE_SIZE_IN_BYTE*n, size-MAX_MESSAGE_SIZE_IN_BYTE*n,MPI_BYTE,source,tag,comm,&status);
+}
+
 int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f )
 { 
     int size;
@@ -46,12 +68,16 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f )
 
     // send works to workers
     int a = totalWorks/(size-1);
+    int remain = totalWorks %(size-1);
+    int offset=0;
     for(int worker_rank =1;worker_rank<size;worker_rank++){
-      int count = worker_rank == size-1 ? totalWorks - (size-2)*a : a;
-      char * b = serialize_works(count, works + (worker_rank-1)*a, f->work_sz);
-
+      int count = worker_rank <= remain ? a + 1 : a;
+      if(count == 0) 
+        continue;
+      char * b = serialize_works(count, works + offset, f->work_sz);
       MPI_Send(&count,1,MPI_INT,worker_rank,0,global_comm);
-      MPI_Send(b, count*f->work_sz, MPI_BYTE,worker_rank,0,global_comm);
+      send_message(b,count*f->work_sz,worker_rank,0,global_comm);
+      offset += count;
       free(b);
     }
 
@@ -60,13 +86,14 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f )
     char result_buf[f->res_sz];
     MPI_Status status;
 
-    int n=0;
+    offset=0;
     for(int worker_rank=1;worker_rank<size;worker_rank++){
-      int count = worker_rank == size-1 ? totalWorks - (size-2)*a : a;
+      int count = worker_rank <= remain ? a + 1 : a;
+
       for(int i =0;i<count;i++){
         MPI_Recv(result_buf,f->res_sz,MPI_BYTE,worker_rank,0,global_comm,&status);
-        memcpy(((char *)mw_results) + n*f->res_sz, result_buf,f->res_sz);
-        n++;
+        memcpy(((char *)mw_results) + offset*f->res_sz, result_buf,f->res_sz);
+        offset++;
       }
     }
     
@@ -85,19 +112,20 @@ int slave(MPI_Comm global_comm, struct mw_api_spec *f )
 
     MPI_Comm_rank(global_comm, &rank);
     MPI_Recv(&nWorks,1,MPI_INT,0,0,global_comm,&status);
-    char buf[nWorks * f->work_sz];
-    MPI_Recv(buf,nWorks*(f->work_sz),MPI_BYTE,0,0,global_comm, &status);
-    
+    char * buf = malloc(f->work_sz*nWorks);
+    //MPI_Recv(buf,nWorks*(f->work_sz),MPI_BYTE,0,0,global_comm, &status);
+    receive_message(buf,nWorks*(f->work_sz),0,0,global_comm);
+
     //// execute works
     mw_result_t ** results = malloc(sizeof(mw_result_t *) * nWorks);
     for(int i = 0;i<nWorks;i++){
-      printf("doing work in process %d:\n",rank);
       mw_work_t * work = deserialize_work(buf+i*(f->work_sz),f->work_sz);
       *(results +i) = f->compute(work);
       free(work);
     }
+    free(buf);
     
-    //// send results to the master
+    // send results to the master
     char result_buf[f->res_sz];    
     for(int i =0;i<nWorks;i++){
       memcpy(result_buf, *(results+i),f->res_sz);
