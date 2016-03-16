@@ -3,6 +3,11 @@ struct userdef_result_t; /* definition provided by user */
 typedef struct userdef_work_t mw_work_t;
 typedef struct userdef_result_t mw_result_t;
 
+struct serial_t{
+  size_t size;
+  char *data;
+};
+
 struct mw_api_spec {
    mw_work_t **(*create) (int argc, char **argv);
       /* create work: return a NULL-terminated list of work. Return NULL if it fails. */
@@ -15,6 +20,7 @@ struct mw_api_spec {
 
    int work_sz, res_sz;
       /* size in bytes of the work structure and result structure, needed to send/receive messages */
+
 };
 
 void MW_Run (int argc, char **argv, struct mw_api_spec *f);

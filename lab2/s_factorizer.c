@@ -27,7 +27,6 @@ int main(int argc, char **argv)
   mpz_set_str(count,"0",10);
   struct factor_node * iter = factors;
   while(iter != NULL){
-    //printf("factor is %s\n",mpz_get_str(NULL,10,iter->factor));
     iter = iter->next;
     mpz_add_ui(count,count,1);
   }

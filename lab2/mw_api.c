@@ -104,7 +104,7 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f )
 }
 
 
-int slave(MPI_Comm global_comm, struct mw_api_spec *f )
+int slave(MPI_Comm global_comm, struct mw_api_spec *f)
 {
     int  rank;
     MPI_Status status;
@@ -113,23 +113,21 @@ int slave(MPI_Comm global_comm, struct mw_api_spec *f )
     MPI_Comm_rank(global_comm, &rank);
     MPI_Recv(&nWorks,1,MPI_INT,0,0,global_comm,&status);
     char * buf = malloc(f->work_sz*nWorks);
-    //MPI_Recv(buf,nWorks*(f->work_sz),MPI_BYTE,0,0,global_comm, &status);
     receive_message(buf,nWorks*(f->work_sz),0,0,global_comm);
 
     //// execute works
-    mw_result_t ** results = malloc(sizeof(mw_result_t *) * nWorks);
+
+    //mw_result_t ** results = malloc(sizeof(mw_result_t *) * nWorks);
+    char result_buf[f->res_sz];    
     for(int i = 0;i<nWorks;i++){
       mw_work_t * work = deserialize_work(buf+i*(f->work_sz),f->work_sz);
-      *(results +i) = f->compute(work);
+      mw_result_t * result = f->compute(work);
+      memcpy(result_buf, result,f->res_sz);
+      MPI_Send(result_buf,f->res_sz,MPI_BYTE,0,0,global_comm);
+//      *(results +i) = f->compute(work);
       free(work);
     }
     free(buf);
     
-    // send results to the master
-    char result_buf[f->res_sz];    
-    for(int i =0;i<nWorks;i++){
-      memcpy(result_buf, *(results+i),f->res_sz);
-      MPI_Send(result_buf,f->res_sz,MPI_BYTE,0,0,global_comm);
-    }
     return 0;
 }

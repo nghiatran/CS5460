@@ -17,7 +17,6 @@ struct userdef_work_t{
 
 struct userdef_result_t{
   char factors[2*MAX_FACTORS_PER_WORK][MAX_DIGITS];
-  //char factor[MAX_DIGITS];
 };
 
 mw_result_t *do_work(mw_work_t *work){
@@ -33,11 +32,11 @@ mw_result_t *do_work(mw_work_t *work){
   mpz_t upper_bound;
   mpz_init(upper_bound);
   mpz_set_str(upper_bound,work->upper_bound,10);
-  //printf("doing work\n");
   struct factor_node * factor_nodes = find_factors(lower_bound,upper_bound,val);
 
   int i =0;
   struct factor_node * iter = factor_nodes;
+
   while(iter != NULL){
     strcpy(result->factors[i++],mpz_get_str(NULL,10,iter->factor));
     iter = iter->next;
@@ -45,29 +44,6 @@ mw_result_t *do_work(mw_work_t *work){
 
   for(;i<2*MAX_FACTORS_PER_WORK;i++)
     result->factors[i][0] = '\0';
-
-  // for(int i =0;i<MAX_FACTORS_PER_WORK;i++){
-  //   if(strlen(work->factors[i]) != 0){
-  //     mpz_t factor;
-  //     mpz_init(factor);
-  //     mpz_set_str(factor,work->factors[i],10);
-  //     if(mpz_divisible_p(val,factor) != 0){
-  //       strcpy(result->factors[2*i],work->factors[i]);
-  //       mpz_t q;
-  //       mpz_init(q);
-  //       mpz_cdiv_q(q,val,factor);
-  //       strcpy(result->factors[2*i+1],mpz_get_str(NULL,10,q));  
-  //     }
-  //     else{
-  //       result->factors[2*i][0] = '\0';
-  //       result->factors[2*i+1][0] = '\0';
-  //     }
-  //   }
-  //   else{
-  //       result->factors[2*i][0] = '\0';
-  //       result->factors[2*i+1][0] = '\0';
-  //   }
-  // }
 
   return result;
 }
