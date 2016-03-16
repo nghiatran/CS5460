@@ -10,7 +10,7 @@ struct factor_node{
 };
 
 
-struct node * find_factors(mpz_t from, mpz_t to, mpz_t val){
+struct node * find_factors(mpz_t from, mpz_t to, mpz_t val, int * count){
 
   mpz_t i;
   mpz_init(i);
@@ -18,7 +18,10 @@ struct node * find_factors(mpz_t from, mpz_t to, mpz_t val){
 
   struct factor_node * head = NULL;
   struct factor_node * tail = NULL;
-
+  
+  if(count != NULL)
+    *count =0;
+  
   while(mpz_cmp(i,to)<=0){
     if(mpz_divisible_p(val,i) != 0){
       struct factor_node * node1 = malloc(sizeof(struct factor_node));
@@ -44,6 +47,8 @@ struct node * find_factors(mpz_t from, mpz_t to, mpz_t val){
       node2->next = NULL;
       tail->next =node2;
       tail = tail->next;
+      if(count != NULL)
+        *count = (*count) +2;
     }    
     mpz_add_ui(i,i,1);
   } 

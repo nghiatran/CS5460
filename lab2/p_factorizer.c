@@ -6,7 +6,7 @@
 #include "factorizer.h"
 
 #define MAX_DIGITS 40
-#define MAX_FACTORS_PER_WORK 1000
+#define MAX_FACTORS_PER_WORK 100000
 
 struct userdef_work_t{
   char val[MAX_DIGITS];
@@ -16,11 +16,62 @@ struct userdef_work_t{
 
 
 struct userdef_result_t{
-  char factors[2*MAX_FACTORS_PER_WORK][MAX_DIGITS];
+  int n;
+  mpz_t * factors;
 };
 
+
+serial_t * serialize_result(mw_result_t * res){
+  serial_t * ret = malloc(sizeof(serial_t));
+  size_t data_size=0;
+
+  for(int i =0;i<res->n;i++){
+    data_size += mpz_sizeinbase(*(res->factors +i), 10);
+  }
+  
+  size_t allocated_size = data_size +2*res->n;
+  ret->size = allocated_size;
+  ret->data = malloc(allocated_size);
+
+  size_t offset=0;
+  for(int i =0;i<res->n;i++){
+    char * str = mpz_get_str(NULL,10,*(res->factors+i));
+    memcpy(ret->data + offset,str,strlen(str)+1);
+    offset += strlen(str) +1;
+  }
+
+  //fill the remaining bytes with tabs
+  for(;offset < allocated_size;offset++)
+    *(ret->data +offset) = '\t';
+
+  return ret;
+
+}
+
+mw_result_t * deserialize_result(serial_t * res_data){
+  mw_result_t * result = malloc(sizeof(mw_result_t));
+  int n =0;
+  for(int i =0;i<res_data->size;i++){
+    if(*(res_data->data +i) == '\0')
+      n++;
+  }
+  result->n = n;
+  result->factors = malloc(sizeof(mpz_t)*n);
+  int start_pos =0;
+  int k=0;
+  for(int i=0;i<res_data->size;i++){
+    if(*(res_data->data+i) == '\0'){
+      mpz_init(*(result->factors+k));
+      mpz_set_str(*(result->factors+k),res_data->data+start_pos,10);
+      start_pos = i+1;
+      k++;
+    }
+  }
+  return result;
+}
+
 mw_result_t *do_work(mw_work_t *work){
-  mw_result_t *result = malloc(sizeof(mw_result_t));
+  mw_result_t *mw_result = malloc(sizeof(mw_result_t));
   mpz_t val;
   mpz_init(val);
   mpz_set_str(val,work->val,10);
@@ -32,20 +83,22 @@ mw_result_t *do_work(mw_work_t *work){
   mpz_t upper_bound;
   mpz_init(upper_bound);
   mpz_set_str(upper_bound,work->upper_bound,10);
-  struct factor_node * factor_nodes = find_factors(lower_bound,upper_bound,val);
+  
+  int factor_count;
+  struct factor_node * factor_nodes = find_factors(lower_bound,upper_bound,val,&factor_count);
 
-  int i =0;
-  struct factor_node * iter = factor_nodes;
+  if(factor_nodes == NULL)
+    return NULL;
 
-  while(iter != NULL){
-    strcpy(result->factors[i++],mpz_get_str(NULL,10,iter->factor));
-    iter = iter->next;
+  mw_result->factors = malloc(sizeof(mpz_t)*factor_count);
+  mw_result->n = factor_count;
+
+  for(int i=0;i<factor_count;i++){
+    memcpy((mw_result->factors)+i,factor_nodes->factor,sizeof(mpz_t));
+    factor_nodes = factor_nodes->next;
   }
 
-  for(;i<2*MAX_FACTORS_PER_WORK;i++)
-    result->factors[i][0] = '\0';
-
-  return result;
+  return mw_result;
 }
 
 
@@ -92,20 +145,9 @@ mw_work_t **create_work(int argc,char **argv){
 
 int * process_results(int sz, mw_result_t *res){
   int factors_count=0;
-  for(int i=0;i<sz;i++){
-    for(int j =0;j<2*MAX_FACTORS_PER_WORK;j++){
-      if (strlen((res+i)->factors[j]) != 0)
-        factors_count++;
-    }
-  }
-  char results[factors_count][MAX_DIGITS];
-  int c =0;
-  for(int i=0;i<sz;i++){
-    for(int j =0;j<2*MAX_FACTORS_PER_WORK;j++){
-      if (strlen((res+i)->factors[j]) != 0){
-        strcpy(results[c++],(res+i)->factors[j]);
-      }
-    }
+
+  for (int i =0;i<sz;i++){
+    factors_count += (res+i)->n;
   }
   printf("The number has %d factors\n",factors_count);
   return 1;
@@ -118,12 +160,14 @@ int main(int argc, char **argv)
   struct mw_api_spec f;
 
   MPI_Init (&argc, &argv);
-
+  
   f.create = create_work;
   f.result = process_results;
   f.compute = do_work;
   f.work_sz = sizeof (struct userdef_work_t);
   f.res_sz = sizeof (struct userdef_result_t);
+  f.serialize_result = serialize_result;
+  f.deserialize_result = deserialize_result;
   MW_Run (argc, argv, &f);
   MPI_Finalize ();
 
