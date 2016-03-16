@@ -32,6 +32,7 @@ mw_work_t * deserialize_work(char * buff, int work_sz){
   return works;
 }
 
+/// send a big message in multiple small chunks
 int send_message(char * buf, int size,int dest, int tag, MPI_Comm comm){
   int n = size / MAX_MESSAGE_SIZE_IN_BYTE;
   for(int i =0;i<n;i++){
@@ -42,6 +43,7 @@ int send_message(char * buf, int size,int dest, int tag, MPI_Comm comm){
     MPI_Send(buf+MAX_MESSAGE_SIZE_IN_BYTE*n, size -MAX_MESSAGE_SIZE_IN_BYTE*n,MPI_BYTE,dest,tag,comm);
 }
 
+/// receive a big message in multiple small chunks
 int receive_message(char * buf, int size, int source, int tag, MPI_Comm comm){
   MPI_Status status;
   int n = size / MAX_MESSAGE_SIZE_IN_BYTE;
@@ -66,7 +68,7 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
     while(*(works+totalWorks) != NULL)
       totalWorks++;
 
-    // send works to workers
+    //// send works to workers
     int a = totalWorks/(size-1);
     int remain = totalWorks %(size-1);
     int offset=0;
@@ -84,10 +86,10 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
 
     //// collect results
     MPI_Status status;
-    char ** data[size];
-    int * result_sizes[size];
-    int result_counts[size];
-    int total_results = 0;
+    char ** data[size];       // data sent by all workers
+    int * result_sizes[size]; // sizes of individual results sent by each worker
+    int result_counts[size];  // number of results sent by each worker
+    int total_results = 0; 
     
     for(int worker_rank=1;worker_rank<=busy_workers_count;worker_rank++){   
 
@@ -114,7 +116,7 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
     for(int worker_rank=1;worker_rank<=busy_workers_count;worker_rank++){
 
       for(int j=0;j<result_counts[worker_rank];j++){
-        serial_t s_data = {*(result_sizes[worker_rank]+j), *(data[worker_rank]+j)};
+        serial_t s_data = {result_sizes[worker_rank][j], *(data[worker_rank]+j)};
 
         mw_result_t * _result = f->deserialize_result(&s_data);
         memcpy(((char *)mw_results)+ i*f->res_sz, _result, f->res_sz);
@@ -122,7 +124,9 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
         i++;
       }
     }
-  
+    
+
+    /// process results
     f->result(total_results,mw_results);
     free(works);
     free(mw_results);
