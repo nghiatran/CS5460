@@ -6,7 +6,7 @@
 #include "factorizer.h"
 
 #define MAX_DIGITS 40
-#define MAX_FACTORS_PER_WORK 100000
+//#define MAX_FACTORS_PER_WORK 10000000000
 
 struct userdef_work_t{
   char val[MAX_DIGITS];
@@ -115,8 +115,12 @@ mw_work_t **create_work(int argc,char **argv){
   mpz_sqrt (mp_sqrtn, mp_val);
   unsigned long int sqrtn = mpz_get_ui(mp_sqrtn);
 
-  unsigned long int nWorks = (sqrtn + MAX_FACTORS_PER_WORK -1)/MAX_FACTORS_PER_WORK;
-  int remain = sqrtn % MAX_FACTORS_PER_WORK;
+  unsigned long int max_factors_per_work; 
+  max_factors_per_work = strtoul(argv[2],NULL,10);
+
+  printf("maximum number of factors to test per job: %lu\n",max_factors_per_work);
+  unsigned long int nWorks = (sqrtn + max_factors_per_work -1)/max_factors_per_work;
+  unsigned long int remain = sqrtn % max_factors_per_work;
   
   mw_work_t ** works = malloc(sizeof(mw_work_t*) * (nWorks+1));
 
@@ -126,7 +130,7 @@ mw_work_t **create_work(int argc,char **argv){
   for(int i=0;i<nWorks;i++){
     mw_work_t *wrk = malloc(sizeof(mw_work_t));
     strcpy(wrk->val,val);
-    int count = i == nWorks -1 && remain != 0 ? remain : MAX_FACTORS_PER_WORK;
+    unsigned long int count = i == nWorks -1 && remain != 0 ? remain : max_factors_per_work;
 
     char *lower_bound = mpz_get_str(NULL,10,f);
     mpz_add_ui(f,f,count-1);
@@ -160,7 +164,7 @@ int main(int argc, char **argv)
   struct mw_api_spec f;
 
   MPI_Init (&argc, &argv);
-  
+
   f.create = create_work;
   f.result = process_results;
   f.compute = do_work;

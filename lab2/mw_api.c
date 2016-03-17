@@ -92,6 +92,10 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
       free(b);
     }
 
+    //// free up memory occupied by works
+    for(mw_work_t ** iter=works;*iter != NULL;iter++)
+      free(*iter);
+
     //// collect results
     MPI_Status status;
     char ** data[size];       // data sent by all workers
