@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "mpi.h"
 #include "mw_api.h"
+#include <time.h>
 
 #define MAX_MESSAGE_SIZE_IN_BYTE 500000
 /* run master-worker */
@@ -11,8 +12,19 @@ void MW_Run (int argc, char **argv, struct mw_api_spec *f){
 
   MPI_Comm_rank( MPI_COMM_WORLD, &rank );
   //MPI_Comm_split( MPI_COMM_WORLD, rank == 0, 0, &mw_comm );
-  if (rank == 0) 
+  if (rank == 0){ 
+    double start_time,end_time;
+      // time_t start_time, end_time;
+      // time(&start_time);
+    start_time = MPI_Wtime();
     master( MPI_COMM_WORLD, argc, argv, f);
+    end_time = MPI_Wtime();
+//  time(&end_time);
+
+    double t = end_time-start_time;
+//    double t = difftime(end_time,start_time);
+    printf("Total time is %f microseconds\n",t*1000000);
+  }
   else
     slave( MPI_COMM_WORLD, f);
 }
