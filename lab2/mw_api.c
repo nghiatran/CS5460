@@ -81,6 +81,8 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
     int remain = totalWorks %(size-1);
     int offset=0;
     int busy_workers_count=0;
+
+
     for(int worker_rank =1;worker_rank<size;worker_rank++){
       int count = worker_rank <= remain ? a + 1 : a;
       char * b = serialize_works(count, works + offset, f->work_sz);
@@ -93,7 +95,7 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
     }
 
     //// free up memory occupied by works
-    for(mw_work_t ** iter=works;*iter != NULL;iter++)
+    for(mw_work_t ** iter=works; *iter != NULL;iter++)
       free(*iter);
 
     //// collect results
@@ -121,9 +123,10 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
       }
     }
 
+
+
     mw_result_t * mw_results = malloc(f->res_sz*total_results);
     
-
     int i=0;
     for(int worker_rank=1;worker_rank<=busy_workers_count;worker_rank++){
 
@@ -137,7 +140,6 @@ int master( MPI_Comm global_comm, int argc, char** argv, struct mw_api_spec *f)
       }
     }
     
-
     /// process results
     f->result(total_results,mw_results);
     free(works);
